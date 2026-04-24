@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import facultyDepartments from "../data/facultyDepartments";
 import defaultSportRules from "../config/defaultSportRules";
 import { defaultCompetitions } from "../data/competitions";
+import { useAuth } from "./AuthContext";
 
 import {
   seedDefaultSportRules,
@@ -85,8 +86,7 @@ import {
   deleteMedalFromFirestore,
 } from "../services/medalService";
 
-import 
-{
+import {
   subscribeToGallery,
   addGalleryItemToFirestore,
   updateGalleryItemInFirestore,
@@ -124,23 +124,6 @@ function toPrimitiveId(value, fallback = "") {
   return String(value);
 }
 
-
-
-function safeText(value, fallback = "") {
-  return typeof value === "string" || typeof value === "number"
-    ? String(value)
-    : fallback;
-}
-
-function safeNumber(value, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function safeBoolean(value) {
-  return value === true;
-}
-
 function isValidCategory(category) {
   return VALID_CATEGORIES.includes(category);
 }
@@ -148,6 +131,8 @@ function isValidCategory(category) {
 export { isValidCategory };
 
 export function AppDataProvider({ children }) {
+  const { user } = useAuth();
+
   const [rawFixtures, setRawFixtures] = useState([]);
   const [results, setResults] = useState([]);
   const [news, setNews] = useState([]);
@@ -161,6 +146,9 @@ export function AppDataProvider({ children }) {
   const [favourites, setFavourites] = useState([]);
   const [medals, setMedals] = useState([]);
   const [gallery, setGallery] = useState([]);
+
+  const favouriteOwnerId = user?.uid || user?.email || "";
+
   useEffect(() => {
     seedDefaultSportRules(defaultSportRules);
     seedDefaultCompetitions(defaultCompetitions);
@@ -181,10 +169,7 @@ export function AppDataProvider({ children }) {
     const unsubscribe = subscribeToSports((firestoreSports) => {
       const uniqueSports = firestoreSports.filter((sport, index, array) => {
         const currentName = normalizeText(sport?.name);
-        return (
-          index ===
-          array.findIndex((item) => normalizeText(item?.name) === currentName)
-        );
+        return index === array.findIndex((item) => normalizeText(item?.name) === currentName);
       });
 
       setSports(uniqueSports);
@@ -194,9 +179,14 @@ export function AppDataProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = subscribeToFavourites(setFavourites);
+    if (!favouriteOwnerId) {
+      setFavourites([]);
+      return;
+    }
+
+    const unsubscribe = subscribeToFavourites(favouriteOwnerId, setFavourites);
     return () => unsubscribe();
-  }, []);
+  }, [favouriteOwnerId]);
 
   useEffect(() => {
     const unsubscribe = subscribeToFixtures(setRawFixtures);
@@ -243,22 +233,8 @@ export function AppDataProvider({ children }) {
     return () => unsubscribe();
   }, []);
 
-   const addGalleryItem = async (item) => {
-  await addGalleryItemToFirestore(item);
-};
-
-const updateGalleryItem = async (id, updates) => {
-  await updateGalleryItemInFirestore(id, updates);
-};
-
-const deleteGalleryItem = async (id) => {
-  await deleteGalleryItemFromFirestore(id);
-};
-
   const getSportRuleBySport = (sportName) =>
-    sportRules.find(
-      (rule) => normalizeText(rule?.sport) === normalizeText(sportName)
-    );
+    sportRules.find((rule) => normalizeText(rule?.sport) === normalizeText(sportName));
 
   const updateSportRule = async (id, updates) => {
     await updateSportRuleInFirestore(id, updates);
@@ -267,7 +243,7 @@ const deleteGalleryItem = async (id) => {
   const getTeamById = (teamId) =>
     teams.find((team) => String(team.id) === String(teamId));
 
-  const getTeamByLegacyNameAndCategory = (teamName, category, sport ="") =>
+  const getTeamByLegacyNameAndCategory = (teamName, category, sport = "") =>
     teams.find(
       (team) =>
         normalizeText(team?.name) === normalizeText(teamName) &&
@@ -280,114 +256,113 @@ const deleteGalleryItem = async (id) => {
     return team?.players?.find((player) => String(player.id) === String(playerId));
   };
 
-const fixtures = useMemo(() => {
-  return rawFixtures.map((fixture) => {
-    const safeHomeTeamId = toPrimitiveId(fixture.homeTeamId, "");
-    const safeAwayTeamId = toPrimitiveId(fixture.awayTeamId, "");
-    const safeHomeLegacyName = toPrimitiveText(
-      fixture.homeTeam || fixture.legacyHomeTeamName,
-      ""
-    );
-    const safeAwayLegacyName = toPrimitiveText(
-      fixture.awayTeam || fixture.legacyAwayTeamName,
-      ""
-    );
-    const safeCategory = toPrimitiveText(fixture.category || fixture.gender, "");
-     
-     const safeSport = toPrimitiveText(fixture.sport, "");
+  const fixtures = useMemo(() => {
+    return rawFixtures.map((fixture) => {
+      const safeHomeTeamId = toPrimitiveId(fixture.homeTeamId, "");
+      const safeAwayTeamId = toPrimitiveId(fixture.awayTeamId, "");
+      const safeHomeLegacyName = toPrimitiveText(
+        fixture.homeTeam || fixture.legacyHomeTeamName,
+        ""
+      );
+      const safeAwayLegacyName = toPrimitiveText(
+        fixture.awayTeam || fixture.legacyAwayTeamName,
+        ""
+      );
+      const safeCategory = toPrimitiveText(fixture.category || fixture.gender, "");
+      const safeSport = toPrimitiveText(fixture.sport, "");
 
-    const homeTeamRecord =
-      getTeamById(safeHomeTeamId) ||
-      getTeamByLegacyNameAndCategory(safeHomeLegacyName, safeCategory, safeSport);
+      const homeTeamRecord =
+        getTeamById(safeHomeTeamId) ||
+        getTeamByLegacyNameAndCategory(safeHomeLegacyName, safeCategory, safeSport);
 
-    const awayTeamRecord =
-      getTeamById(safeAwayTeamId) ||
-      getTeamByLegacyNameAndCategory(safeAwayLegacyName, safeCategory, safeSport);
+      const awayTeamRecord =
+        getTeamById(safeAwayTeamId) ||
+        getTeamByLegacyNameAndCategory(safeAwayLegacyName, safeCategory, safeSport);
 
-    return {
-      ...fixture,
-      id: toPrimitiveId(fixture.id || fixture.localId, ""),
-      localId: toPrimitiveId(fixture.localId, ""),
-      competitionId: toPrimitiveId(fixture.competitionId, ""),
-      competitionName: toPrimitiveText(fixture.competitionName, ""),
-      competitionType: toPrimitiveText(fixture.competitionType, ""),
-      participantMode: toPrimitiveText(fixture.participantMode, ""),
-      ownerDepartment: toPrimitiveText(fixture.ownerDepartment, ""),
-      competitionGroup: toPrimitiveText(fixture.competitionGroup, ""),
-      sport: toPrimitiveText(fixture.sport, ""),
-      stage: toPrimitiveText(fixture.stage, ""),
-      category:
-        toPrimitiveText(fixture.category, "") ||
-        toPrimitiveText(fixture.gender, "") ||
-        toPrimitiveText(homeTeamRecord?.category, "") ||
-        toPrimitiveText(awayTeamRecord?.category, ""),
-      gender:
-        toPrimitiveText(fixture.gender, "") ||
-        toPrimitiveText(fixture.category, "") ||
-        toPrimitiveText(homeTeamRecord?.category, "") ||
-        toPrimitiveText(awayTeamRecord?.category, ""),
-      homeTeamId: toPrimitiveId(homeTeamRecord?.id || fixture.homeTeamId, ""),
-      awayTeamId: toPrimitiveId(awayTeamRecord?.id || fixture.awayTeamId, ""),
-      homeTeam:
-        toPrimitiveText(homeTeamRecord?.name, "") ||
-        toPrimitiveText(fixture.homeTeam, "Unknown Team"),
-      awayTeam:
-        toPrimitiveText(awayTeamRecord?.name, "") ||
-        toPrimitiveText(fixture.awayTeam, "Unknown Team"),
-      date: toPrimitiveText(fixture.date, ""),
-      kickoffTime: toPrimitiveText(fixture.kickoffTime, ""),
-      endTime: toPrimitiveText(fixture.endTime, ""),
-      venue: toPrimitiveText(fixture.venue, ""),
-      status: toPrimitiveText(fixture.status, "Upcoming"),
-      postponed: Boolean(fixture.postponed),
-      score: {
-        home: Number(fixture.score?.home ?? 0),
-        away: Number(fixture.score?.away ?? 0),
-      },
-      cards: {
-        homeYellow: Number(fixture.cards?.homeYellow ?? 0),
-        awayYellow: Number(fixture.cards?.awayYellow ?? 0),
-        homeRed: Number(fixture.cards?.homeRed ?? 0),
-        awayRed: Number(fixture.cards?.awayRed ?? 0),
-      },
-      substitutions: {
-        home: Number(fixture.substitutions?.home ?? 0),
-        away: Number(fixture.substitutions?.away ?? 0),
-      },
-      lineups: {
-        homeCoach: toPrimitiveText(fixture.lineups?.homeCoach, ""),
-        awayCoach: toPrimitiveText(fixture.lineups?.awayCoach, ""),
-        homePlayerIds: ensureArray(fixture.lineups?.homePlayerIds),
-        awayPlayerIds: ensureArray(fixture.lineups?.awayPlayerIds),
-      },
-      events: ensureArray(fixture.events),
-      timing:
-        fixture.timing && typeof fixture.timing === "object"
-          ? fixture.timing
-          : {
-              mode: "clock",
-              currentPeriod: 0,
-              totalPeriods: 2,
-              periodLabel: "Half",
-              periodDurationMinutes: 30,
-              breakDurationMinutes: 10,
-              phase: "Pre-Match",
-              isRunning: false,
-              startedAt: null,
-              pausedAt: null,
-              currentPeriodStartedAt: null,
-              breakStartedAt: null,
-              elapsedSeconds: 0,
-              homeSetsWon: 0,
-              awaySetsWon: 0,
-              sets: [],
-              currentSetNumber: 0,
-              currentSetHome: 0,
-              currentSetAway: 0,
-            },
-    };
-  });
-}, [rawFixtures, teams]);
+      return {
+        ...fixture,
+        id: toPrimitiveId(fixture.id || fixture.localId, ""),
+        localId: toPrimitiveId(fixture.localId, ""),
+        competitionId: toPrimitiveId(fixture.competitionId, ""),
+        competitionName: toPrimitiveText(fixture.competitionName, ""),
+        competitionType: toPrimitiveText(fixture.competitionType, ""),
+        participantMode: toPrimitiveText(fixture.participantMode, ""),
+        ownerDepartment: toPrimitiveText(fixture.ownerDepartment, ""),
+        competitionGroup: toPrimitiveText(fixture.competitionGroup, ""),
+        sport: toPrimitiveText(fixture.sport, ""),
+        stage: toPrimitiveText(fixture.stage, ""),
+        category:
+          toPrimitiveText(fixture.category, "") ||
+          toPrimitiveText(fixture.gender, "") ||
+          toPrimitiveText(homeTeamRecord?.category, "") ||
+          toPrimitiveText(awayTeamRecord?.category, ""),
+        gender:
+          toPrimitiveText(fixture.gender, "") ||
+          toPrimitiveText(fixture.category, "") ||
+          toPrimitiveText(homeTeamRecord?.category, "") ||
+          toPrimitiveText(awayTeamRecord?.category, ""),
+        homeTeamId: toPrimitiveId(homeTeamRecord?.id || fixture.homeTeamId, ""),
+        awayTeamId: toPrimitiveId(awayTeamRecord?.id || fixture.awayTeamId, ""),
+        homeTeam:
+          toPrimitiveText(homeTeamRecord?.name, "") ||
+          toPrimitiveText(fixture.homeTeam, "Unknown Team"),
+        awayTeam:
+          toPrimitiveText(awayTeamRecord?.name, "") ||
+          toPrimitiveText(fixture.awayTeam, "Unknown Team"),
+        date: toPrimitiveText(fixture.date, ""),
+        kickoffTime: toPrimitiveText(fixture.kickoffTime, ""),
+        endTime: toPrimitiveText(fixture.endTime, ""),
+        venue: toPrimitiveText(fixture.venue, ""),
+        status: toPrimitiveText(fixture.status, "Upcoming"),
+        postponed: Boolean(fixture.postponed),
+        score: {
+          home: Number(fixture.score?.home ?? 0),
+          away: Number(fixture.score?.away ?? 0),
+        },
+        cards: {
+          homeYellow: Number(fixture.cards?.homeYellow ?? 0),
+          awayYellow: Number(fixture.cards?.awayYellow ?? 0),
+          homeRed: Number(fixture.cards?.homeRed ?? 0),
+          awayRed: Number(fixture.cards?.awayRed ?? 0),
+        },
+        substitutions: {
+          home: Number(fixture.substitutions?.home ?? 0),
+          away: Number(fixture.substitutions?.away ?? 0),
+        },
+        lineups: {
+          homeCoach: toPrimitiveText(fixture.lineups?.homeCoach, ""),
+          awayCoach: toPrimitiveText(fixture.lineups?.awayCoach, ""),
+          homePlayerIds: ensureArray(fixture.lineups?.homePlayerIds),
+          awayPlayerIds: ensureArray(fixture.lineups?.awayPlayerIds),
+        },
+        events: ensureArray(fixture.events),
+        timing:
+          fixture.timing && typeof fixture.timing === "object"
+            ? fixture.timing
+            : {
+                mode: "clock",
+                currentPeriod: 0,
+                totalPeriods: 2,
+                periodLabel: "Half",
+                periodDurationMinutes: 30,
+                breakDurationMinutes: 10,
+                phase: "Pre-Match",
+                isRunning: false,
+                startedAt: null,
+                pausedAt: null,
+                currentPeriodStartedAt: null,
+                breakStartedAt: null,
+                elapsedSeconds: 0,
+                homeSetsWon: 0,
+                awaySetsWon: 0,
+                sets: [],
+                currentSetNumber: 0,
+                currentSetHome: 0,
+                currentSetAway: 0,
+              },
+      };
+    });
+  }, [rawFixtures, teams]);
 
   const addCompetition = async (competition) => {
     await addCompetitionToFirestore(competition);
@@ -577,8 +552,10 @@ const fixtures = useMemo(() => {
     });
   };
 
-  const addTableTeam = async (teamName, 
-    sport = "Football", category = "Male",
+  const addTableTeam = async (
+    teamName,
+    sport = "Football",
+    category = "Male",
     competitionGroup = ""
   ) => {
     await addTableRowToFirestore({
@@ -712,10 +689,9 @@ const fixtures = useMemo(() => {
           (item) =>
             String(item.team || "").toLowerCase() === String(row.team || "").toLowerCase() &&
             String(item.sport || "").toLowerCase() === String(row.sport || "").toLowerCase() &&
-            String(item.category || "").toLowerCase() === String(row.category || "").toLowerCase()
-              &&
-            String(item.competitionGroup || "").toLowerCase() 
-            === String(row.competitionGroup || "").toLowerCase()
+            String(item.category || "").toLowerCase() === String(row.category || "").toLowerCase() &&
+            String(item.competitionGroup || "").toLowerCase() ===
+              String(row.competitionGroup || "").toLowerCase()
         );
 
         if (existing) {
@@ -728,29 +704,34 @@ const fixtures = useMemo(() => {
   };
 
   const addTeam = async (team) => {
-  await addTeamToFirestore({
-    ...team,
-    department: team.department || team.name || "",
-    name: team.name || team.department || "",
-    sport: team.sport || "",
-    displayName:
-      team.displayName ||
-      `${team.department || team.name || "Team"} ${team.sport || ""} ${team.category || ""} Team`.trim(),
-    players: team.players || [],
-  });
-};
+    await addTeamToFirestore({
+      ...team,
+      department: team.department || team.name || "",
+      name: team.name || team.department || "",
+      sport: team.sport || "",
+      displayName:
+        team.displayName ||
+        `${team.department || team.name || "Team"} ${team.sport || ""} ${
+          team.category || ""
+        } Team`.trim(),
+      players: team.players || [],
+    });
+  };
 
   const updateTeam = async (id, updates) => {
-  await updateTeamInFirestore(id, {
-    ...updates,
-    department: updates.department || updates.name || "",
-    name: updates.name || updates.department || "",
-    sport: updates.sport || "",
-    displayName:
-      updates.displayName ||
-      `${updates.department || updates.name || "Team"} ${updates.sport || ""} ${updates.category || ""} Team`.trim(),
-  });
-};
+    await updateTeamInFirestore(id, {
+      ...updates,
+      department: updates.department || updates.name || "",
+      name: updates.name || updates.department || "",
+      sport: updates.sport || "",
+      displayName:
+        updates.displayName ||
+        `${updates.department || updates.name || "Team"} ${updates.sport || ""} ${
+          updates.category || ""
+        } Team`.trim(),
+    });
+  };
+
   const deleteTeam = async (id) => {
     await deleteTeamFromFirestore(id);
   };
@@ -959,17 +940,33 @@ const fixtures = useMemo(() => {
   };
 
   const toggleFavouriteMatch = async (matchId) => {
-    const exists = favourites.some((item) => String(item.matchId) === String(matchId));
+    try {
+      if (!favouriteOwnerId || !matchId) {
+        console.log("Missing favourite owner id or matchId");
+        return;
+      }
 
-    if (exists) {
-      await removeFavouriteFromFirestoreByMatchId(matchId);
-    } else {
-      await addFavouriteToFirestore(matchId);
+      const exists = favourites.some(
+        (item) => String(item.matchId) === String(matchId)
+      );
+
+      if (exists) {
+        await removeFavouriteFromFirestoreByMatchId(favouriteOwnerId, matchId);
+      } else {
+        await addFavouriteToFirestore(favouriteOwnerId, matchId);
+      }
+    } catch (error) {
+      console.error("Favourite toggle error:", error);
     }
   };
 
   const removeFavouriteMatch = async (matchId) => {
-    await removeFavouriteFromFirestoreByMatchId(matchId);
+    try {
+      if (!favouriteOwnerId || !matchId) return;
+      await removeFavouriteFromFirestoreByMatchId(favouriteOwnerId, matchId);
+    } catch (error) {
+      console.error("Remove favourite error:", error);
+    }
   };
 
   const isFavouriteMatch = (matchId) =>
@@ -995,6 +992,18 @@ const fixtures = useMemo(() => {
           String(item.category || "").toLowerCase() === String(category || "").toLowerCase()
       )
       .sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+  };
+
+  const addGalleryItem = async (item) => {
+    await addGalleryItemToFirestore(item);
+  };
+
+  const updateGalleryItem = async (id, updates) => {
+    await updateGalleryItemInFirestore(id, updates);
+  };
+
+  const deleteGalleryItem = async (id) => {
+    await deleteGalleryItemFromFirestore(id);
   };
 
   const value = useMemo(
@@ -1082,6 +1091,7 @@ const fixtures = useMemo(() => {
       sportRules,
       medals,
       gallery,
+      favouriteOwnerId,
     ]
   );
 

@@ -130,59 +130,60 @@ function LiveMatchControl() {
   }, [elapsedSeconds, selectedMatch, rule, editingEventId]);
 
   useEffect(() => {
-  if (!selectedMatch || !rule) return;
-  if (rule.mode !== "clock") return;
-  if (!timing.isRunning) return;
-  if (num(timing.currentPeriod, 0) < 1) return;
-  if (!timing.currentPeriodStartedAt) return;
+    if (!selectedMatch || !rule) return;
+    if (rule.mode !== "clock") return;
+    if (!timing.isRunning) return;
+    if (num(timing.currentPeriod, 0) < 1) return;
+    if (!timing.currentPeriodStartedAt) return;
 
-  const storedElapsed = num(timing.elapsedSeconds, 0);
-  const startedAt = new Date(timing.currentPeriodStartedAt).getTime();
-  const now = Date.now();
-  const liveElapsed = Math.max(Math.floor((now - startedAt) / 1000), 0);
-  const totalLiveElapsed = storedElapsed + liveElapsed;
+    const storedElapsed = num(timing.elapsedSeconds, 0);
+    const startedAt = new Date(timing.currentPeriodStartedAt).getTime();
+    const now = Date.now();
+    const liveElapsed = Math.max(Math.floor((now - startedAt) / 1000), 0);
+    const totalLiveElapsed = storedElapsed + liveElapsed;
 
-  if (totalLiveElapsed < totalPeriodSeconds) return;
+    if (totalLiveElapsed < totalPeriodSeconds) return;
 
-  const autoStop = async () => {
-    const updatedFixture = await updateFixtureWithCallback(selectedMatch.id, (match) => {
-      const current = match.timing || {};
-      const currentPeriod = num(current.currentPeriod, 1);
-      const totalPeriods = num(current.totalPeriods || rule.periods, 2);
-      const isFinalPeriod = currentPeriod >= totalPeriods;
+    const autoStop = async () => {
+      const updatedFixture = await updateFixtureWithCallback(selectedMatch.id, (match) => {
+        const current = match.timing || {};
+        const currentPeriod = num(current.currentPeriod, 1);
+        const totalPeriods = num(current.totalPeriods || rule.periods, 2);
+        const isFinalPeriod = currentPeriod >= totalPeriods;
 
-      return {
-        ...match,
-        status: isFinalPeriod ? "Ended" : "Halftime",
-        timing: {
-          ...current,
-          isRunning: false,
-          phase: isFinalPeriod ? "Ended" : "Halftime",
-          elapsedSeconds: totalPeriodSeconds,
-          currentPeriodStartedAt: null,
-        },
-      };
-    });
+        return {
+          ...match,
+          status: isFinalPeriod ? "Ended" : "Halftime",
+          timing: {
+            ...current,
+            isRunning: false,
+            phase: isFinalPeriod ? "Ended" : "Halftime",
+            elapsedSeconds: totalPeriodSeconds,
+            currentPeriodStartedAt: null,
+          },
+        };
+      });
 
-    await recalculateAllPlayerStats();
-    await syncSingleResultFromFixture(updatedFixture);
-    await recalculateTablesFromEndedFixtures();
-  };
+      await recalculateAllPlayerStats();
+      await syncSingleResultFromFixture(updatedFixture);
+      await recalculateTablesFromEndedFixtures();
+    };
 
-  autoStop();
-}, [
-  selectedMatch,
-  rule,
-  timing.isRunning,
-  timing.currentPeriod,
-  timing.elapsedSeconds,
-  timing.currentPeriodStartedAt,
-  totalPeriodSeconds,
-  updateFixtureWithCallback,
-  recalculateAllPlayerStats,
-  syncSingleResultFromFixture,
-  recalculateTablesFromEndedFixtures,
-]);
+    autoStop();
+  }, [
+    selectedMatch,
+    rule,
+    timing.isRunning,
+    timing.currentPeriod,
+    timing.elapsedSeconds,
+    timing.currentPeriodStartedAt,
+    totalPeriodSeconds,
+    updateFixtureWithCallback,
+    recalculateAllPlayerStats,
+    syncSingleResultFromFixture,
+    recalculateTablesFromEndedFixtures,
+  ]);
+
   const resetEventForm = () => {
     setEventForm({
       minute: rule?.mode === "clock" ? getCurrentClockMinute() : "",
@@ -445,20 +446,21 @@ function LiveMatchControl() {
     if (nextPeriod > totalPeriods) return;
 
     await updateFixtureWithCallback(selectedMatch.id, (match) => ({
-  ...match,
-  status: "Live",
-  timing: {
-    ...(match.timing || {}),
-    currentPeriod: nextPeriod,
-    phase: nextPeriod === 2 ? "Second Half" : `Period ${nextPeriod}`,
-    isRunning: true,
-    currentPeriodStartedAt: new Date().toISOString(),
-    breakStartedAt: null,
-    pausedAt: null,
-    elapsedSeconds: 0,
-  },
-}));
-setElapsedSeconds(0);
+      ...match,
+      status: "Live",
+      timing: {
+        ...(match.timing || {}),
+        currentPeriod: nextPeriod,
+        phase: nextPeriod === 2 ? "Second Half" : `Period ${nextPeriod}`,
+        isRunning: true,
+        currentPeriodStartedAt: new Date().toISOString(),
+        breakStartedAt: null,
+        pausedAt: null,
+        elapsedSeconds: 0,
+      },
+    }));
+
+    setElapsedSeconds(0);
   };
 
   const handleStartSetMatch = async () => {
@@ -615,16 +617,42 @@ setElapsedSeconds(0);
 
       {selectedMatch && (
         <>
-          <div className="admin-section-card">
-            <h2>
-              {text(selectedMatch.homeTeam, "Home")} {num(selectedMatch.score?.home, 0)} -{" "}
-              {num(selectedMatch.score?.away, 0)} {text(selectedMatch.awayTeam, "Away")}
-            </h2>
+          <div className="admin-section-card admin-scoreboard-card">
+            <div className="admin-scoreboard__top">
+              <span className="admin-scoreboard__competition">
+                {text(selectedMatch.competitionName, "Competition")}
+              </span>
+              <span className="admin-scoreboard__status">
+                {text(selectedMatch.status, "Upcoming")}
+              </span>
+            </div>
 
-            <p><strong>Sport:</strong> {text(selectedMatch.sport, "N/A")}</p>
-            <p><strong>Category:</strong> {text(selectedMatch.category, "N/A")}</p>
-            <p><strong>Status:</strong> {text(selectedMatch.status, "N/A")}</p>
-            <p><strong>Phase:</strong> {text(timing.phase, "Pre-Match")}</p>
+            <div className="admin-scoreboard">
+              <div className="admin-scoreboard__team">
+                <h3>{text(selectedMatch.homeTeam, "Home")}</h3>
+                <p>{text(selectedMatch.category, "Category")}</p>
+              </div>
+
+              <div className="admin-scoreboard__score">
+                <strong>
+                  {num(selectedMatch.score?.home, 0)} - {num(selectedMatch.score?.away, 0)}
+                </strong>
+                <span>{text(timing.phase, "Pre-Match")}</span>
+                {rule?.mode === "clock" && (
+                  <small>{formatSeconds(derivedRemainingSeconds)}</small>
+                )}
+                {rule?.mode === "sets" && (
+                  <small>
+                    Sets: {num(timing.homeSetsWon, 0)} - {num(timing.awaySetsWon, 0)}
+                  </small>
+                )}
+              </div>
+
+              <div className="admin-scoreboard__team">
+                <h3>{text(selectedMatch.awayTeam, "Away")}</h3>
+                <p>{text(selectedMatch.sport, "Sport")}</p>
+              </div>
+            </div>
           </div>
 
           {rule?.mode === "clock" && (

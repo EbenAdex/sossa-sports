@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useAppData } from "../../context/AppDataContext";
 
@@ -7,7 +7,7 @@ function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState("");
   const { user, hasRegistered, isAdmin } = useAuth();
-  const { sports } = useAppData();
+  const { sports = [] } = useAppData();
 
   const handleToggleMenu = () => {
     setMenuOpen((prev) => !prev);
@@ -23,6 +23,18 @@ function Navbar() {
   };
 
   const homeLink = user ? "/home" : "/";
+
+  const visibleSports = useMemo(() => {
+    return sports.filter((sport) => {
+      const name = String(sport?.name || "").trim();
+      const link = String(sport?.link || "").trim();
+
+      if (!name) return false;
+      if (!link || link === "#") return false;
+
+      return true;
+    });
+  }, [sports]);
 
   return (
     <header className="navbar">
@@ -61,19 +73,20 @@ function Navbar() {
                     openDropdown === "sports" ? "navbar__dropdown-menu--open" : ""
                   }`}
                 >
-                  {sports.map((sport) => (
-                    <NavLink
-                      key={sport.id}
-                      to={
-                        sport.link ||
-                        `/sports/${String(sport.name).toLowerCase().replace(/\s+/g, "-")}`
-                      }
-                      className="navbar__dropdown-link"
-                      onClick={closeMenu}
-                    >
-                      {sport.name}
-                    </NavLink>
-                  ))}
+                  {visibleSports.length ? (
+                    visibleSports.map((sport) => (
+                      <NavLink
+                        key={sport.id}
+                        to={sport.link}
+                        className="navbar__dropdown-link"
+                        onClick={closeMenu}
+                      >
+                        {sport.name}
+                      </NavLink>
+                    ))
+                  ) : (
+                    <span className="navbar__dropdown-link">No sports pages yet</span>
+                  )}
                 </div>
               </div>
 
@@ -112,7 +125,11 @@ function Navbar() {
                   <NavLink to="/rankings" className="navbar__dropdown-link" onClick={closeMenu}>
                     Rankings
                   </NavLink>
-                  <NavLink to="/leaderboards" className="navbar__dropdown-link" onClick={closeMenu}>
+                  <NavLink
+                    to="/leaderboards"
+                    className="navbar__dropdown-link"
+                    onClick={closeMenu}
+                  >
                     Leaderboards
                   </NavLink>
                 </div>

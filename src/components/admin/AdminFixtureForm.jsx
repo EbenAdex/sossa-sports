@@ -2,7 +2,21 @@ import { useMemo, useState } from "react";
 import { useAppData } from "../../context/AppDataContext";
 import { getStagesForSport } from "../../utils/competitionHelpers";
 
-const availableSports = ["Football", "Basketball", "Volleyball", "Table Tennis"];
+const SPORT_CATEGORY_RULES = {
+  Football: ["Male", "Female"],
+  Basketball: ["Male", "Female"],
+  Volleyball: ["Male", "Female"],
+  "Table Tennis": ["Male", "Female"],
+  "Lawn Tennis": ["Male", "Female"],
+  Chess: ["Male", "Female"],
+  Checkers: ["Male", "Female"],
+  Scrabble: ["Male", "Female"],
+  Ludo: ["Male", "Female"],
+  FC26: ["Male"],
+  "Mortal Kombat": ["Female"],
+};
+
+const availableSports = Object.keys(SPORT_CATEGORY_RULES);
 
 function AdminFixtureForm({ onAddFixture }) {
   const { competitions, teams } = useAppData();
@@ -34,12 +48,22 @@ function AdminFixtureForm({ onAddFixture }) {
     return getStagesForSport(formData.sport);
   }, [formData.sport]);
 
+  const allowedCategories = useMemo(() => {
+    return SPORT_CATEGORY_RULES[formData.sport] || ["Male", "Female"];
+  }, [formData.sport]);
+
   const selectableTeams = useMemo(() => {
-    return teams.filter(
-      (team) =>
-        String(team.sport || "").toLowerCase() === String(formData.sport || "").toLowerCase() &&
-        String(team.category || "").toLowerCase() === String(formData.category || "").toLowerCase()
-    );
+    return teams.filter((team) => {
+      const sameSport =
+        String(team.sport || "").toLowerCase() ===
+        String(formData.sport || "").toLowerCase();
+
+      const sameCategory =
+        String(team.category || "").toLowerCase() ===
+        String(formData.category || "").toLowerCase();
+
+      return sameSport && sameCategory;
+    });
   }, [teams, formData.sport, formData.category]);
 
   const handleChange = (event) => {
@@ -55,10 +79,14 @@ function AdminFixtureForm({ onAddFixture }) {
 
       if (name === "sport") {
         const stages = getStagesForSport(value);
+        const nextAllowedCategories = SPORT_CATEGORY_RULES[value] || ["Male", "Female"];
 
         return {
           ...prev,
           sport: value,
+          category: nextAllowedCategories.includes(prev.category)
+            ? prev.category
+            : nextAllowedCategories[0] || "Male",
           stage: stages[0] || "",
           homeTeamId: "",
           awayTeamId: "",
@@ -108,6 +136,13 @@ function AdminFixtureForm({ onAddFixture }) {
   const handleSubmit = (event) => {
     event.preventDefault();
 
+    const validCategories = SPORT_CATEGORY_RULES[formData.sport] || ["Male", "Female"];
+
+    if (!validCategories.includes(formData.category)) {
+      alert(`Selected category is not allowed for ${formData.sport}.`);
+      return;
+    }
+
     if (!formData.competitionId) {
       alert("Please select a competition.");
       return;
@@ -137,16 +172,20 @@ function AdminFixtureForm({ onAddFixture }) {
     }
 
     if (
-      String(homeTeamRecord.sport || "").toLowerCase() !== String(formData.sport || "").toLowerCase() ||
-      String(awayTeamRecord.sport || "").toLowerCase() !== String(formData.sport || "").toLowerCase()
+      String(homeTeamRecord.sport || "").toLowerCase() !==
+        String(formData.sport || "").toLowerCase() ||
+      String(awayTeamRecord.sport || "").toLowerCase() !==
+        String(formData.sport || "").toLowerCase()
     ) {
       alert("Selected teams do not match the chosen sport.");
       return;
     }
 
     if (
-      String(homeTeamRecord.category || "").toLowerCase() !== String(formData.category || "").toLowerCase() ||
-      String(awayTeamRecord.category || "").toLowerCase() !== String(formData.category || "").toLowerCase()
+      String(homeTeamRecord.category || "").toLowerCase() !==
+        String(formData.category || "").toLowerCase() ||
+      String(awayTeamRecord.category || "").toLowerCase() !==
+        String(formData.category || "").toLowerCase()
     ) {
       alert("Selected teams do not match the chosen category.");
       return;
@@ -267,8 +306,11 @@ function AdminFixtureForm({ onAddFixture }) {
         </select>
 
         <select name="category" value={formData.category} onChange={handleChange}>
-          <option value="Male">Male</option>
-          <option value="Female">Female</option>
+          {allowedCategories.map((category) => (
+            <option key={category} value={category}>
+              {category}
+            </option>
+          ))}
         </select>
 
         <select name="stage" value={formData.stage} onChange={handleChange}>
@@ -296,7 +338,8 @@ function AdminFixtureForm({ onAddFixture }) {
           <option value="">Select Home Team</option>
           {selectableTeams.map((team) => (
             <option key={team.id} value={team.id}>
-              {team.displayName || `${team.department || team.name} ${team.sport} ${team.category}`}
+              {team.displayName ||
+                `${team.department || team.name} ${team.sport} ${team.category}`}
             </option>
           ))}
         </select>
@@ -310,7 +353,8 @@ function AdminFixtureForm({ onAddFixture }) {
           <option value="">Select Away Team</option>
           {selectableTeams.map((team) => (
             <option key={team.id} value={team.id}>
-              {team.displayName || `${team.department || team.name} ${team.sport} ${team.category}`}
+              {team.displayName ||
+                `${team.department || team.name} ${team.sport} ${team.category}`}
             </option>
           ))}
         </select>

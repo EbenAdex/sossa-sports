@@ -10,6 +10,7 @@ function ManageSports() {
     image: "",
     description: "",
     link: "",
+    showOnHomepage: false,
   });
 
   const [selectedSport, setSelectedSport] = useState("");
@@ -21,6 +22,7 @@ function ManageSports() {
     image: "",
     description: "",
     link: "",
+    showOnHomepage: false,
   });
 
   const sortedSports = useMemo(() => {
@@ -28,20 +30,20 @@ function ManageSports() {
   }, [sports]);
 
   const handleSportChange = (event) => {
-    const { name, value } = event.target;
+    const { name, value, type, checked } = event.target;
 
     setSportForm((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === "checkbox" ? checked : value,
     }));
   };
 
   const handleEditSportChange = (event) => {
-    const { name, value } = event.target;
+    const { name, value, type, checked } = event.target;
 
     setEditSportForm((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === "checkbox" ? checked : value,
     }));
   };
 
@@ -57,9 +59,8 @@ function ManageSports() {
         sportForm.image ||
         "https://images.unsplash.com/photo-1547347298-4074fc3086f0?auto=format&fit=crop&w=800&q=80",
       description: sportForm.description,
-      link:
-        sportForm.link ||
-        `/sports/${sportForm.name.trim().toLowerCase().replace(/\s+/g, "-")}`,
+      link: sportForm.link.trim(),
+      showOnHomepage: Boolean(sportForm.showOnHomepage),
     });
 
     setSportForm({
@@ -67,6 +68,7 @@ function ManageSports() {
       image: "",
       description: "",
       link: "",
+      showOnHomepage: false,
     });
   };
 
@@ -77,6 +79,7 @@ function ManageSports() {
       image: sport.image || "",
       description: sport.description || "",
       link: sport.link || "",
+      showOnHomepage: Boolean(sport.showOnHomepage),
     });
   };
 
@@ -87,9 +90,8 @@ function ManageSports() {
       name: editSportForm.name.trim(),
       image: editSportForm.image,
       description: editSportForm.description,
-      link:
-        editSportForm.link ||
-        `/sports/${editSportForm.name.trim().toLowerCase().replace(/\s+/g, "-")}`,
+      link: editSportForm.link.trim(),
+      showOnHomepage: Boolean(editSportForm.showOnHomepage),
     });
 
     setEditingSportId(null);
@@ -136,6 +138,7 @@ function ManageSports() {
               onChange={handleSportChange}
               required
             />
+
             <input
               type="text"
               name="image"
@@ -143,13 +146,15 @@ function ManageSports() {
               value={sportForm.image}
               onChange={handleSportChange}
             />
+
             <input
               type="text"
               name="link"
-              placeholder="Route link (optional)"
+              placeholder="Route link (leave empty if no route yet)"
               value={sportForm.link}
               onChange={handleSportChange}
             />
+
             <textarea
               name="description"
               placeholder="Sport description"
@@ -158,6 +163,16 @@ function ManageSports() {
               rows="3"
             />
           </div>
+
+          <label className="remember-me">
+            <input
+              type="checkbox"
+              name="showOnHomepage"
+              checked={sportForm.showOnHomepage}
+              onChange={handleSportChange}
+            />
+            <span>Show on homepage sports section</span>
+          </label>
 
           <button type="submit" className="btn btn--primary">
             Add Sport
@@ -179,6 +194,7 @@ function ManageSports() {
                 onChange={handleEditSportChange}
                 required
               />
+
               <input
                 type="text"
                 name="image"
@@ -186,6 +202,7 @@ function ManageSports() {
                 value={editSportForm.image}
                 onChange={handleEditSportChange}
               />
+
               <input
                 type="text"
                 name="link"
@@ -193,6 +210,7 @@ function ManageSports() {
                 value={editSportForm.link}
                 onChange={handleEditSportChange}
               />
+
               <textarea
                 name="description"
                 placeholder="Sport description"
@@ -201,6 +219,16 @@ function ManageSports() {
                 rows="3"
               />
             </div>
+
+            <label className="remember-me">
+              <input
+                type="checkbox"
+                name="showOnHomepage"
+                checked={editSportForm.showOnHomepage}
+                onChange={handleEditSportChange}
+              />
+              <span>Show on homepage sports section</span>
+            </label>
 
             <div className="admin-actions">
               <button type="submit">Save Sport</button>
@@ -263,9 +291,20 @@ function ManageSports() {
                 <p>{sport.description || "No description yet."}</p>
 
                 <p>
+                  <strong>Route:</strong> {sport.link || "No route assigned yet"}
+                </p>
+
+                <p>
+                  <strong>Homepage Visibility:</strong>{" "}
+                  {sport.showOnHomepage ? "Visible on homepage" : "Hidden from homepage"}
+                </p>
+
+                <p>
                   <strong>Assigned Teams:</strong>{" "}
                   {assignedTeams.length
-                    ? assignedTeams.map((team) => `${team.name} (${team.category})`).join(", ")
+                    ? assignedTeams
+                        .map((team) => `${team.name} (${team.category})`)
+                        .join(", ")
                     : "No teams assigned yet"}
                 </p>
 

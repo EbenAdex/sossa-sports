@@ -21,6 +21,19 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function getCoachName(coachValue, fallback = "") {
+  if (!coachValue) return fallback;
+  if (typeof coachValue === "string") return coachValue;
+  if (typeof coachValue === "object") return asText(coachValue.name, fallback);
+  return fallback;
+}
+
+function getCoachAbout(coachValue, fallback = "") {
+  if (!coachValue) return fallback;
+  if (typeof coachValue === "object") return asText(coachValue.about, fallback);
+  return fallback;
+}
+
 function formatLiveMatchTimer(timing) {
   const currentTiming = timing || {};
   const periodDurationMinutes = Number(currentTiming.periodDurationMinutes || 30);
@@ -52,6 +65,7 @@ function Home() {
   const sports = asArray(appData.sports);
   const teams = asArray(appData.teams);
   const favourites = asArray(appData.favourites);
+  const table = asArray(appData.table);
   const getSortedTable =
     typeof appData.getSortedTable === "function" ? appData.getSortedTable : () => [];
 
@@ -70,20 +84,41 @@ function Home() {
     .slice(0, 4);
 
   const recentResults = results.slice(0, 4);
-  const topStandings = asArray(getSortedTable("Football", "Male")).slice(0, 5);
 
- const qualifiedDepartments = useMemo(() => {
-  const qualifiedDepartmentNames = new Set(
-    teams
-      .filter((team) => Boolean(team?.qualified))
-      .map((team) => String(team.department || team.name || "").trim().toLowerCase())
-      .filter(Boolean)
-  );
+  const availableFootballMaleGroups = useMemo(() => {
+    return [
+      ...new Set(
+        table
+          .filter(
+            (row) =>
+              asText(row?.sport).toLowerCase() === "football" &&
+              asText(row?.category).toLowerCase() === "male" &&
+              asText(row?.competitionGroup).trim() !== ""
+          )
+          .map((row) => asText(row?.competitionGroup))
+      ),
+    ].sort();
+  }, [table]);
 
-  return qualifiedDepartmentNames.size || facultyDepartments.length;
-}, [teams]);
+  const homepageStandingGroup = availableFootballMaleGroups[0] || "";
 
-const totalTeams = teams.length;
+  const topStandings = useMemo(() => {
+    if (!homepageStandingGroup) return [];
+    return asArray(getSortedTable("Football", "Male", homepageStandingGroup)).slice(0, 5);
+  }, [getSortedTable, homepageStandingGroup]);
+
+  const qualifiedDepartments = useMemo(() => {
+    const qualifiedDepartmentNames = new Set(
+      teams
+        .filter((team) => Boolean(team?.qualified))
+        .map((team) => String(team.department || team.name || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    return qualifiedDepartmentNames.size || facultyDepartments.length;
+  }, [teams]);
+
+  const totalTeams = teams.length;
 
   const searchableTeams = useMemo(() => {
     return teams.filter((team) => {
@@ -101,11 +136,29 @@ const totalTeams = teams.length;
       asArray(team.players).map((player) => ({
         ...player,
         teamId: team.id,
-        teamName: team.displayName || `${team.department || team.name} ${team.sport || ""} ${team.category || ""}`.trim(),
+        teamName:
+          team.displayName ||
+          `${team.department || team.name} ${team.sport || ""} ${team.category || ""}`.trim(),
         category: team.category,
         sport: team.sport,
       }))
     );
+  }, [searchableTeams]);
+
+  const searchableCoaches = useMemo(() => {
+    return searchableTeams
+      .filter((team) => team?.coach || team?.coachName)
+      .map((team) => ({
+        teamId: team.id,
+        coachName: getCoachName(team.coach || team.coachName, ""),
+        coachAbout: getCoachAbout(team.coach, ""),
+        teamName:
+          team.displayName ||
+          `${team.department || team.name} ${team.sport || ""} ${team.category || ""}`.trim(),
+        category: team.category,
+        sport: team.sport,
+      }))
+      .filter((item) => item.coachName);
   }, [searchableTeams]);
 
   const filteredTeams = useMemo(() => {
@@ -115,7 +168,9 @@ const totalTeams = teams.length;
     return searchableTeams.filter((team) => {
       const displayName = asText(
         team?.displayName,
-        `${asText(team?.department || team?.name)} ${asText(team?.sport)} ${asText(team?.category)}`
+        `${asText(team?.department || team?.name)} ${asText(team?.sport)} ${asText(
+          team?.category
+        )}`
       ).toLowerCase();
 
       const departmentName = asText(team?.department || team?.name).toLowerCase();
@@ -138,6 +193,33 @@ const totalTeams = teams.length;
     );
   }, [searchQuery, searchablePlayers]);
 
+  const filteredCoaches = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return [];
+
+    return searchableCoaches.filter((coach) => {
+      const coachName = asText(coach.coachName).toLowerCase();
+      const coachAbout = asText(coach.coachAbout).toLowerCase();
+      const teamName = asText(coach.teamName).toLowerCase();
+      const sportName = asText(coach.sport).toLowerCase();
+
+      return (
+        coachName.includes(query) ||
+        coachAbout.includes(query) ||
+        teamName.includes(query) ||
+        sportName.includes(query)
+      );
+    });
+  }, [searchQuery, searchableCoaches]);
+
+  const homepageSports = useMemo(() => {
+    return sports.filter((sport) => {
+      const link = asText(sport?.link).trim();
+      const showOnHomepage = Boolean(sport?.showOnHomepage);
+      return showOnHomepage && link !== "" && link !== "#";
+    });
+  }, [sports]);
+
   const handleSearch = () => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return;
@@ -154,7 +236,13 @@ const totalTeams = teams.length;
       return;
     }
 
-    alert("No matching team or player found.");
+    const matchedCoach = filteredCoaches[0];
+    if (matchedCoach) {
+      navigate(`/teams/${matchedCoach.teamId}`);
+      return;
+    }
+
+    alert("No matching team, player, or coach found.");
   };
 
   const handleSearchKeyDown = (event) => {
@@ -204,19 +292,22 @@ const totalTeams = teams.length;
                   <strong>{sports.length}</strong>
                   <span>Sports</span>
                 </div>
-               <div className="homepage-stat-card">
-  <strong>{qualifiedDepartments}</strong>
-  <span>Qualified Teams</span>
-</div>
 
-<div className="homepage-stat-card">
-  <strong>{totalTeams}</strong>
-  <span>Total Squads</span>
-</div>
+                <div className="homepage-stat-card">
+                  <strong>{qualifiedDepartments}</strong>
+                  <span>Qualified Teams</span>
+                </div>
+
+                <div className="homepage-stat-card">
+                  <strong>{totalTeams}</strong>
+                  <span>Total Squads</span>
+                </div>
+
                 <div className="homepage-stat-card">
                   <strong>{liveMatches.length}</strong>
                   <span>Live Matches</span>
                 </div>
+
                 <div className="homepage-stat-card">
                   <strong>{favourites.length}</strong>
                   <span>Watchlist</span>
@@ -229,8 +320,8 @@ const totalTeams = teams.length;
         <section className="homepage-search-block">
           <div className="container">
             <div className="homepage-panel">
-              <h2>Search Teams and Players</h2>
-              <p>Search across male and female teams and player rosters.</p>
+              <h2>Search Teams, Players and Coaches</h2>
+              <p>Search across male and female teams, player rosters, and coaches.</p>
 
               <div className="homepage-search-row">
                 <select
@@ -244,7 +335,7 @@ const totalTeams = teams.length;
 
                 <input
                   type="text"
-                  placeholder="Search by team or player..."
+                  placeholder="Search by team, player or coach..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
@@ -269,7 +360,9 @@ const totalTeams = teams.length;
                           >
                             <strong>
                               {team.displayName ||
-                                `${team.department || team.name} ${team.sport || ""} ${team.category || ""}`.trim()}
+                                `${team.department || team.name} ${team.sport || ""} ${
+                                  team.category || ""
+                                }`.trim()}
                             </strong>
                             <p>
                               {team.department || team.name} • {team.sport || "No sport"} •{" "}
@@ -291,10 +384,11 @@ const totalTeams = teams.length;
                             to={`/players/${player.teamId}/${player.id}`}
                             className="search-list__item"
                           >
-                            <strong>{player.name}</strong>
+                            <strong>{asText(player.name, "Unnamed Player")}</strong>
                             <p>
-                              {player.teamName} • {player.position || "No position"} •{" "}
-                              {player.category || "No category"}
+                              {asText(player.teamName, "Unknown Team")} •{" "}
+                              {asText(player.position, "No position")} •{" "}
+                              {asText(player.category, "No category")}
                             </p>
                           </Link>
                         ))}
@@ -302,30 +396,54 @@ const totalTeams = teams.length;
                     </div>
                   )}
 
-                  {filteredTeams.length === 0 && filteredPlayers.length === 0 && (
-                    <p className="homepage-empty">No matching team or player found.</p>
+                  {filteredCoaches.length > 0 && (
+                    <div className="homepage-search-results__block">
+                      <h3>Coaches</h3>
+                      <div className="search-list">
+                        {filteredCoaches.slice(0, 5).map((coach) => (
+                          <Link
+                            key={`${coach.teamId}-${coach.coachName}`}
+                            to={`/teams/${coach.teamId}`}
+                            className="search-list__item"
+                          >
+                            <strong>{asText(coach.coachName, "Unnamed Coach")}</strong>
+                            <p>
+                              {asText(coach.teamName, "Unknown Team")} • {asText(coach.sport, "No sport")} •{" "}
+                              {asText(coach.category, "No category")}
+                            </p>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
                   )}
+
+                  {filteredTeams.length === 0 &&
+                    filteredPlayers.length === 0 &&
+                    filteredCoaches.length === 0 && (
+                      <p className="homepage-empty">No matching team, player, or coach found.</p>
+                    )}
                 </div>
               )}
 
               <div className="homepage-sports-grid">
-                {sports.length ? (
-                  sports.map((sport) => (
+                {homepageSports.length ? (
+                  homepageSports.map((sport) => (
                     <Link
-                      to={asText(sport?.link, "#")}
+                      to={asText(sport?.link)}
                       className="homepage-sport-card"
                       key={asText(sport?.id, asText(sport?.name, "sport"))}
                     >
                       <div className="homepage-sport-card__image-wrap">
                         <img
                           src={
-                            asText(sport?.name).toLowerCase() === "football"
+                            asText(sport?.image).trim() ||
+                            (asText(sport?.name).toLowerCase() === "football"
                               ? "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=900&q=80"
                               : asText(sport?.name).toLowerCase() === "basketball"
                               ? "https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=900&q=80"
                               : asText(sport?.name).toLowerCase() === "volleyball"
                               ? "https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&w=900&q=80"
-                              : "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=80"
+                              : "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=900&q=80")
                           }
                           alt={asText(sport?.name, "Sport")}
                         />
@@ -334,7 +452,7 @@ const totalTeams = teams.length;
                     </Link>
                   ))
                 ) : (
-                  <p className="homepage-empty">No sports available yet.</p>
+                  <p className="homepage-empty">No homepage sports available yet.</p>
                 )}
               </div>
             </div>
@@ -367,7 +485,8 @@ const totalTeams = teams.length;
                         </h3>
 
                         <p>
-                          <strong>Phase:</strong> {asText(match?.timing?.phase, match?.status || "Live")}
+                          <strong>Phase:</strong>{" "}
+                          {asText(match?.timing?.phase, match?.status || "Live")}
                         </p>
 
                         <p>
@@ -476,7 +595,10 @@ const totalTeams = teams.length;
 
               <div className="homepage-panel">
                 <div className="homepage-section-head">
-                  <h2>Top Standings</h2>
+                  <h2>
+                    Top Standings
+                    {homepageStandingGroup ? ` - ${homepageStandingGroup}` : ""}
+                  </h2>
                   <Link to="/table">More</Link>
                 </div>
 

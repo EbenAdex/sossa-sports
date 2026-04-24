@@ -1,14 +1,21 @@
+import { useMemo } from "react";
 import Navbar from "../components/common/Navbar";
 import Footer from "../components/common/Footer";
 import MatchCard from "../components/sports/MatchCard";
 import { useAppData } from "../context/AppDataContext";
 
 function Favourites() {
-  const { fixtures, favourites } = useAppData();
+  const { fixtures = [], favourites = [] } = useAppData();
 
-  const favouriteMatches = fixtures.filter((fixture) =>
-    favourites.includes(fixture.id)
-  );
+  const favouriteMatches = useMemo(() => {
+    const favouriteIds = new Set(
+      favourites.map((item) => String(item.matchId || "")).filter(Boolean)
+    );
+
+    return fixtures.filter((fixture) =>
+      favouriteIds.has(String(fixture.id || fixture.localId || ""))
+    );
+  }, [fixtures, favourites]);
 
   return (
     <>
@@ -26,7 +33,11 @@ function Favourites() {
             {favouriteMatches.length ? (
               <div className="match-list">
                 {favouriteMatches.map((match) => (
-                  <MatchCard key={match.id} match={match} type="fixture" />
+                  <MatchCard
+                    key={match.id || match.localId}
+                    match={match}
+                    type="fixture"
+                  />
                 ))}
               </div>
             ) : (

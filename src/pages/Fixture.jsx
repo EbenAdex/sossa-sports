@@ -5,8 +5,18 @@ import MatchCard from "../components/sports/MatchCard";
 import { useAppData } from "../context/AppDataContext";
 
 function Fixtures() {
-  const { fixtures } = useAppData();
+  const { fixtures = [], sports = [] } = useAppData();
   const [searchTerm, setSearchTerm] = useState("");
+  const [sportFilter, setSportFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const availableSports = useMemo(() => {
+    return sports
+      .map((item) => String(item.name || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  }, [sports]);
 
   const filteredFixtures = useMemo(() => {
     return fixtures.filter((fixture) => {
@@ -18,25 +28,53 @@ function Fixtures() {
         fixture.venue,
         fixture.competitionName,
         fixture.category,
+        fixture.gender,
+        fixture.status,
+        fixture.competitionGroup,
       ]
         .join(" ")
         .toLowerCase();
 
-      return combined.includes(searchTerm.toLowerCase());
+      const matchesSearch = combined.includes(searchTerm.toLowerCase());
+
+      const matchesSport =
+        sportFilter === "all" ||
+        String(fixture.sport || "").toLowerCase() === sportFilter.toLowerCase();
+
+      const matchesCategory =
+        categoryFilter === "all" ||
+        String(fixture.category || fixture.gender || "").toLowerCase() ===
+          categoryFilter.toLowerCase();
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        String(fixture.status || "").toLowerCase() === statusFilter.toLowerCase();
+
+      return matchesSearch && matchesSport && matchesCategory && matchesStatus;
     });
-  }, [fixtures, searchTerm]);
+  }, [fixtures, searchTerm, sportFilter, categoryFilter, statusFilter]);
 
   const groupedFixtures = useMemo(() => {
-    return filteredFixtures.reduce((acc, fixture) => {
-      if (!acc[fixture.date]) {
-        acc[fixture.date] = [];
+    const grouped = filteredFixtures.reduce((acc, fixture) => {
+      const key = fixture.date || "Undated";
+
+      if (!acc[key]) {
+        acc[key] = [];
       }
-      acc[fixture.date].push(fixture);
+
+      acc[key].push(fixture);
       return acc;
     }, {});
-  }, [filteredFixtures]);
 
-  const groupedDates = Object.keys(groupedFixtures).sort();
+    return Object.keys(grouped)
+      .sort()
+      .map((date) => ({
+        date,
+        matches: grouped[date].sort((a, b) =>
+          String(a.kickoffTime || "").localeCompare(String(b.kickoffTime || ""))
+        ),
+      }));
+  }, [filteredFixtures]);
 
   return (
     <>
@@ -56,21 +94,51 @@ function Fixtures() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
+
+              <select value={sportFilter} onChange={(e) => setSportFilter(e.target.value)}>
+                <option value="all">All Sports</option>
+                {availableSports.map((sport) => (
+                  <option key={sport} value={sport}>
+                    {sport}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="all">All Categories</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">All Statuses</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="live">Live</option>
+                <option value="ended">Ended</option>
+                <option value="postponed">Postponed</option>
+              </select>
             </div>
 
-            {groupedDates.length ? (
-              groupedDates.map((date) => (
+            {groupedFixtures.length ? (
+              groupedFixtures.map(({ date, matches }) => (
                 <section className="fixture-group" key={date}>
                   <h2 className="fixture-group__title">{date}</h2>
                   <div className="match-list">
-                    {groupedFixtures[date].map((fixture) => (
-                      <MatchCard key={fixture.id} match={fixture} type="fixture" />
+                    {matches.map((fixture) => (
+                      <MatchCard
+                        key={fixture.id || fixture.localId}
+                        match={fixture}
+                        type="fixture"
+                      />
                     ))}
                   </div>
                 </section>
               ))
             ) : (
-              <p>No fixtures match your search.</p>
+              <p>No fixtures match your selected filters.</p>
             )}
           </div>
         </div>

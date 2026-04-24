@@ -29,6 +29,12 @@ function Rankings() {
                 <option value="Athletics">Athletics</option>
                 <option value="Swimming">Swimming</option>
                 <option value="Track Events">Track Events</option>
+                 <option value="Chess">Chess</option>
+                  <option value="Scrabble">Scrabble</option>
+                   <option value="Checkers">Checkers</option>
+                    <option value="Ludo">Ludo</option>
+                     <option value="FC26">FC26</option>
+                      <option value="Mortal Kombat">Mortal Kombat</option>
               </select>
 
               <select value={category} onChange={(e) => setCategory(e.target.value)}>

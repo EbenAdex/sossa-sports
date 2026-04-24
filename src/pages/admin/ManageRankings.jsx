@@ -19,7 +19,7 @@ function ManageRankings() {
   const [editingId, setEditingId] = useState(null);
 
   const rankingSports = useMemo(
-    () => ["Athletics", "Swimming", "Track Events"],
+    () => ["Athletics", "Swimming", "Track Events", "Chess", "Scrabble", "Checkers", "Ludo", "FC26", "Mortal Kombat"],
     []
   );
 

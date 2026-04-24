@@ -1,14 +1,21 @@
 import { useMemo, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
 import AdminFixtureForm from "../../components/admin/AdminFixtureForm";
-import { useAppData } from "../../context/AppDataContext";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import { useAppData } from "../../context/AppDataContext";
+
+function asText(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "object") return fallback;
+  return String(value);
+}
 
 function ManageFixtures() {
   const {
-    fixtures,
-    competitions,
-    teams,
+    fixtures = [],
+    competitions = [],
+    teams = [],
+    sports = [],
     addFixture,
     deleteFixture,
     updateFixture,
@@ -19,6 +26,13 @@ function ManageFixtures() {
     recalculateTablesFromEndedFixtures,
   } = useAppData();
 
+  const [editingFixtureId, setEditingFixtureId] = useState(null);
+
+  const [fixtureSportFilter, setFixtureSportFilter] = useState("all");
+  const [fixtureCategoryFilter, setFixtureCategoryFilter] = useState("all");
+  const [fixtureStatusFilter, setFixtureStatusFilter] = useState("all");
+  const [fixtureSearchTerm, setFixtureSearchTerm] = useState("");
+
   const [confirmState, setConfirmState] = useState({
     isOpen: false,
     title: "",
@@ -27,29 +41,8 @@ function ManageFixtures() {
     danger: true,
   });
 
-  const openConfirm = ({ title, message, onConfirm, danger = true }) => {
-  setConfirmState({
-    isOpen: true,
-    title,
-    message,
-    onConfirm,
-    danger,
-  });
-};
-
-const closeConfirm = () => {
-  setConfirmState({
-    isOpen: false,
-    title: "",
-    message: "",
-    onConfirm: null,
-    danger: true,
-  });
-};
-
-  const [editingFixtureId, setEditingFixtureId] = useState(null);
   const [editForm, setEditForm] = useState({
-    sport: "Football",
+    sport: "",
     category: "Male",
     stage: "Group Stage",
     competitionId: "",
@@ -70,6 +63,34 @@ const closeConfirm = () => {
     postponed: false,
   });
 
+  const sportNames = useMemo(() => {
+    const values = sports
+      .map((sport) => asText(sport?.name).trim())
+      .filter(Boolean);
+
+    return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+  }, [sports]);
+
+  const openConfirm = ({ title, message, onConfirm, danger = true }) => {
+    setConfirmState({
+      isOpen: true,
+      title,
+      message,
+      onConfirm,
+      danger,
+    });
+  };
+
+  const closeConfirm = () => {
+    setConfirmState({
+      isOpen: false,
+      title: "",
+      message: "",
+      onConfirm: null,
+      danger: true,
+    });
+  };
+
   const selectedCompetition = useMemo(() => {
     return competitions.find(
       (item) => String(item.id) === String(editForm.competitionId)
@@ -77,18 +98,65 @@ const closeConfirm = () => {
   }, [competitions, editForm.competitionId]);
 
   const availableTeams = useMemo(() => {
-    return teams.filter(
-      (team) =>
-        String(team.sport || "").toLowerCase() === String(editForm.sport || "").toLowerCase() &&
-        String(team.category || "").toLowerCase() === String(editForm.category || "").toLowerCase()
-    );
+    return teams.filter((team) => {
+      const sportMatch =
+        asText(team?.sport).toLowerCase() === asText(editForm.sport).toLowerCase();
+
+      const categoryMatch =
+        asText(team?.category).toLowerCase() === asText(editForm.category).toLowerCase();
+
+      return sportMatch && categoryMatch;
+    });
   }, [teams, editForm.sport, editForm.category]);
 
+  const filteredFixtures = useMemo(() => {
+    return fixtures.filter((fixture) => {
+      const combined = [
+        fixture.homeTeam,
+        fixture.awayTeam,
+        fixture.sport,
+        fixture.stage,
+        fixture.venue,
+        fixture.competitionName,
+        fixture.category,
+        fixture.status,
+        fixture.competitionGroup,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch = combined.includes(fixtureSearchTerm.toLowerCase());
+
+      const matchesSport =
+        fixtureSportFilter === "all" ||
+        asText(fixture.sport).toLowerCase() === fixtureSportFilter.toLowerCase();
+
+      const matchesCategory =
+        fixtureCategoryFilter === "all" ||
+        asText(fixture.category || fixture.gender).toLowerCase() ===
+          fixtureCategoryFilter.toLowerCase();
+
+      const matchesStatus =
+        fixtureStatusFilter === "all" ||
+        asText(fixture.status).toLowerCase() === fixtureStatusFilter.toLowerCase();
+
+      return matchesSearch && matchesSport && matchesCategory && matchesStatus;
+    });
+  }, [
+    fixtures,
+    fixtureSearchTerm,
+    fixtureSportFilter,
+    fixtureCategoryFilter,
+    fixtureStatusFilter,
+  ]);
+
   const sortedFixtures = useMemo(() => {
-    return [...fixtures].sort((a, b) =>
-      String(a.date || "").localeCompare(String(b.date || ""))
+    return [...filteredFixtures].sort((a, b) =>
+      `${asText(a.date)} ${asText(a.kickoffTime)}`.localeCompare(
+        `${asText(b.date)} ${asText(b.kickoffTime)}`
+      )
     );
-  }, [fixtures]);
+  }, [filteredFixtures]);
 
   const handleAddFixture = async (fixture) => {
     await addFixture(fixture);
@@ -97,25 +165,25 @@ const closeConfirm = () => {
   const handleStartEdit = (fixture) => {
     setEditingFixtureId(fixture.id);
     setEditForm({
-      sport: fixture.sport || "Football",
-      category: fixture.category || fixture.gender || "Male",
-      stage: fixture.stage || "Group Stage",
-      competitionId: fixture.competitionId || "",
-      competitionName: fixture.competitionName || "",
-      competitionType: fixture.competitionType || "",
-      participantMode: fixture.participantMode || "",
-      ownerDepartment: fixture.ownerDepartment || "",
-      competitionGroup: fixture.competitionGroup || "",
-      homeTeamId: fixture.homeTeamId || "",
-      awayTeamId: fixture.awayTeamId || "",
-      homeTeam: fixture.homeTeam || "",
-      awayTeam: fixture.awayTeam || "",
-      date: fixture.date || "",
-      kickoffTime: fixture.kickoffTime || "",
-      endTime: fixture.endTime || "",
-      venue: fixture.venue || "",
-      status: fixture.status || "Upcoming",
-      postponed: !!fixture.postponed,
+      sport: asText(fixture.sport),
+      category: asText(fixture.category || fixture.gender, "Male"),
+      stage: asText(fixture.stage, "Group Stage"),
+      competitionId: asText(fixture.competitionId),
+      competitionName: asText(fixture.competitionName),
+      competitionType: asText(fixture.competitionType),
+      participantMode: asText(fixture.participantMode),
+      ownerDepartment: asText(fixture.ownerDepartment),
+      competitionGroup: asText(fixture.competitionGroup),
+      homeTeamId: asText(fixture.homeTeamId),
+      awayTeamId: asText(fixture.awayTeamId),
+      homeTeam: asText(fixture.homeTeam),
+      awayTeam: asText(fixture.awayTeam),
+      date: asText(fixture.date),
+      kickoffTime: asText(fixture.kickoffTime),
+      endTime: asText(fixture.endTime),
+      venue: asText(fixture.venue),
+      status: asText(fixture.status, "Upcoming"),
+      postponed: Boolean(fixture.postponed),
     });
   };
 
@@ -133,10 +201,10 @@ const closeConfirm = () => {
         return {
           ...prev,
           competitionId: value,
-          competitionName: competition?.name || "",
-          competitionType: competition?.competitionType || "",
-          participantMode: competition?.participantMode || "",
-          ownerDepartment: competition?.ownerDepartment || "",
+          competitionName: asText(competition?.name),
+          competitionType: asText(competition?.competitionType),
+          participantMode: asText(competition?.participantMode),
+          ownerDepartment: asText(competition?.ownerDepartment),
         };
       }
 
@@ -168,7 +236,7 @@ const closeConfirm = () => {
         return {
           ...prev,
           homeTeamId: value,
-          homeTeam: selectedTeam?.department || selectedTeam?.name || "",
+          homeTeam: asText(selectedTeam?.department || selectedTeam?.name),
         };
       }
 
@@ -178,7 +246,7 @@ const closeConfirm = () => {
         return {
           ...prev,
           awayTeamId: value,
-          awayTeam: selectedTeam?.department || selectedTeam?.name || "",
+          awayTeam: asText(selectedTeam?.department || selectedTeam?.name),
         };
       }
 
@@ -197,71 +265,77 @@ const closeConfirm = () => {
       return;
     }
 
+    if (!editForm.sport) {
+      alert("Please select a sport.");
+      return;
+    }
+
     if (!editForm.homeTeamId || !editForm.awayTeamId) {
       alert("Please select both teams.");
       return;
     }
 
-    if (editForm.homeTeamId === editForm.awayTeamId) {
+    if (String(editForm.homeTeamId) === String(editForm.awayTeamId)) {
       alert("Home and away teams cannot be the same.");
       return;
     }
 
-    
     const homeTeamRecord = teams.find(
-  (team) => String(team.id) === String(editForm.homeTeamId)
-);
+      (team) => String(team.id) === String(editForm.homeTeamId)
+    );
 
-const awayTeamRecord = teams.find(
-  (team) => String(team.id) === String(editForm.awayTeamId)
-);
+    const awayTeamRecord = teams.find(
+      (team) => String(team.id) === String(editForm.awayTeamId)
+    );
 
-if (!homeTeamRecord || !awayTeamRecord) {
-  alert("Please select valid teams.");
-  return;
-}
+    if (!homeTeamRecord || !awayTeamRecord) {
+      alert("Please select valid teams.");
+      return;
+    }
 
-if (
-  String(homeTeamRecord.sport || "").toLowerCase() !== String(editForm.sport || "").toLowerCase() ||
-  String(awayTeamRecord.sport || "").toLowerCase() !== String(editForm.sport || "").toLowerCase()
-) {
-  alert("Selected teams do not match the chosen sport.");
-  return;
-}
+    if (
+      asText(homeTeamRecord.sport).toLowerCase() !== asText(editForm.sport).toLowerCase() ||
+      asText(awayTeamRecord.sport).toLowerCase() !== asText(editForm.sport).toLowerCase()
+    ) {
+      alert("Selected teams do not match the chosen sport.");
+      return;
+    }
 
-if (
-  String(homeTeamRecord.category || "").toLowerCase() !== String(editForm.category || "").toLowerCase() ||
-  String(awayTeamRecord.category || "").toLowerCase() !== String(editForm.category || "").toLowerCase()
-) {
-  alert("Selected teams do not match the chosen category.");
-  return;
-}
+    if (
+      asText(homeTeamRecord.category).toLowerCase() !==
+        asText(editForm.category).toLowerCase() ||
+      asText(awayTeamRecord.category).toLowerCase() !==
+        asText(editForm.category).toLowerCase()
+    ) {
+      alert("Selected teams do not match the chosen category.");
+      return;
+    }
 
-if (
-  String(homeTeamRecord.department || homeTeamRecord.name || "").toLowerCase() ===
-  String(awayTeamRecord.department || awayTeamRecord.name || "").toLowerCase()
-) {
-  alert("A department cannot play against itself.");
-  return;
-}
+    if (
+      asText(homeTeamRecord.department || homeTeamRecord.name).toLowerCase() ===
+      asText(awayTeamRecord.department || awayTeamRecord.name).toLowerCase()
+    ) {
+      alert("A department cannot play against itself.");
+      return;
+    }
 
-if (
-  String(editForm.sport).toLowerCase() === "football" &&
-  String(editForm.stage).toLowerCase() === "group stage" &&
-  !String(editForm.competitionGroup || "").trim()
-) {
-  alert("Group is required for football group-stage fixtures.");
-  return;
-}
+    if (
+      asText(editForm.sport).toLowerCase() === "football" &&
+      asText(editForm.stage).toLowerCase() === "group stage" &&
+      !asText(editForm.competitionGroup).trim()
+    ) {
+      alert("Group is required for football group-stage fixtures.");
+      return;
+    }
 
     await updateFixture(editingFixtureId, {
       ...editForm,
       gender: editForm.category,
       homeTeamId: editForm.homeTeamId,
       awayTeamId: editForm.awayTeamId,
-      homeTeam: homeTeamRecord?.department || homeTeamRecord?.name || "",
-      awayTeam: awayTeamRecord?.department || awayTeamRecord?.name || "",
-      postponed: editForm.status === "Postponed" ? true : editForm.postponed,
+      homeTeam: asText(homeTeamRecord.department || homeTeamRecord.name),
+      awayTeam: asText(awayTeamRecord.department || awayTeamRecord.name),
+      postponed: editForm.status === "Postponed" ? true : Boolean(editForm.postponed),
     });
 
     setEditingFixtureId(null);
@@ -286,17 +360,19 @@ if (
     });
   };
 
- const handleFinishMatch = async (id) => {
-  const updatedFixture = await updateFixtureWithCallback(id, (fixture) => ({
-    ...fixture,
-    status: "Ended",
-    postponed: false,
-  }));
+  const handleFinishMatch = async (id) => {
+    const updatedFixture = await updateFixtureWithCallback(id, (fixture) => ({
+      ...fixture,
+      status: "Ended",
+      postponed: false,
+    }));
 
-  await recalculateAllPlayerStats();
-  await syncSingleResultFromFixture(updatedFixture);
-  await recalculateTablesFromEndedFixtures();
-};
+    if (!updatedFixture) return;
+
+    await recalculateAllPlayerStats();
+    await syncSingleResultFromFixture(updatedFixture);
+    await recalculateTablesFromEndedFixtures();
+  };
 
   const handlePostponeMatch = async (id) => {
     await updateFixture(id, {
@@ -328,7 +404,7 @@ if (
                 <option value="">Select Competition</option>
                 {competitions.map((competition) => (
                   <option key={competition.id} value={competition.id}>
-                    {competition.name}
+                    {asText(competition.name)}
                   </option>
                 ))}
               </select>
@@ -339,10 +415,12 @@ if (
                 onChange={handleEditChange}
                 required
               >
-                <option value="Football">Football</option>
-                <option value="Basketball">Basketball</option>
-                <option value="Volleyball">Volleyball</option>
-                <option value="Table Tennis">Table Tennis</option>
+                <option value="">Select Sport</option>
+                {sportNames.map((sportName) => (
+                  <option key={sportName} value={sportName}>
+                    {sportName}
+                  </option>
+                ))}
               </select>
 
               <select
@@ -354,18 +432,14 @@ if (
                 <option value="Female">Female</option>
               </select>
 
-              <select
+              <input
+                type="text"
                 name="stage"
                 value={editForm.stage}
                 onChange={handleEditChange}
+                placeholder="Stage"
                 required
-              >
-                <option value="Group Stage">Group Stage</option>
-                <option value="Quarter Final">Quarter Final</option>
-                <option value="Semi Final">Semi Final</option>
-                <option value="Third Place">Third Place</option>
-                <option value="Final">Final</option>
-              </select>
+              />
 
               <select
                 name="homeTeamId"
@@ -376,7 +450,12 @@ if (
                 <option value="">Select Home Team</option>
                 {availableTeams.map((team) => (
                   <option key={team.id} value={team.id}>
-                    {team.displayName || `${team.department || team.name} ${team.sport} ${team.category}`}
+                    {asText(
+                      team.displayName,
+                      `${asText(team.department || team.name)} ${asText(team.sport)} ${asText(
+                        team.category
+                      )}`
+                    )}
                   </option>
                 ))}
               </select>
@@ -390,7 +469,12 @@ if (
                 <option value="">Select Away Team</option>
                 {availableTeams.map((team) => (
                   <option key={team.id} value={team.id}>
-                    {team.displayName || `${team.department || team.name} ${team.sport} ${team.category}`}
+                    {asText(
+                      team.displayName,
+                      `${asText(team.department || team.name)} ${asText(team.sport)} ${asText(
+                        team.category
+                      )}`
+                    )}
                   </option>
                 ))}
               </select>
@@ -463,107 +547,164 @@ if (
       <div className="admin-section-card">
         <h2>Fixture List</h2>
 
+        <div className="team-search-bar">
+          <input
+            type="text"
+            placeholder="Search by team, competition, stage, venue or group"
+            value={fixtureSearchTerm}
+            onChange={(e) => setFixtureSearchTerm(e.target.value)}
+          />
+
+          <select
+            value={fixtureSportFilter}
+            onChange={(e) => setFixtureSportFilter(e.target.value)}
+          >
+            <option value="all">All Sports</option>
+            {sportNames.map((sportName) => (
+              <option key={sportName} value={sportName}>
+                {sportName}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={fixtureCategoryFilter}
+            onChange={(e) => setFixtureCategoryFilter(e.target.value)}
+          >
+            <option value="all">All Categories</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+
+          <select
+            value={fixtureStatusFilter}
+            onChange={(e) => setFixtureStatusFilter(e.target.value)}
+          >
+            <option value="all">All Statuses</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="live">Live</option>
+            <option value="ended">Ended</option>
+            <option value="postponed">Postponed</option>
+          </select>
+        </div>
+
         <div className="admin-list">
           {sortedFixtures.length ? (
             sortedFixtures.map((fixture) => (
               <div className="admin-list-card" key={fixture.id}>
                 <h3>
-                  {fixture.homeTeam} vs {fixture.awayTeam}
+                  {asText(fixture.homeTeam, "Home")} vs {asText(fixture.awayTeam, "Away")}
                 </h3>
+
                 <p>
-                  <strong>Competition:</strong> {fixture.competitionName || "N/A"}
+                  <strong>Competition:</strong> {asText(fixture.competitionName, "N/A")}
                 </p>
+
                 <p>
-                  <strong>Competition Type:</strong> {fixture.competitionType || "N/A"}
+                  <strong>Competition Type:</strong> {asText(fixture.competitionType, "N/A")}
                 </p>
+
                 <p>
-                  <strong>Sport:</strong> {fixture.sport}
+                  <strong>Sport:</strong> {asText(fixture.sport, "N/A")}
                 </p>
+
                 <p>
-                  <strong>Category:</strong> {fixture.category || fixture.gender}
+                  <strong>Category:</strong> {asText(fixture.category || fixture.gender, "N/A")}
                 </p>
+
                 <p>
-                  <strong>Stage:</strong> {fixture.stage}
+                  <strong>Stage:</strong> {asText(fixture.stage, "N/A")}
                 </p>
+
                 <p>
-                  <strong>Group:</strong> {fixture.competitionGroup || "N/A"}
+                  <strong>Group:</strong> {asText(fixture.competitionGroup, "N/A")}
                 </p>
+
                 <p>
-                  <strong>Status:</strong> {fixture.status}
+                  <strong>Status:</strong> {asText(fixture.status, "N/A")}
                 </p>
+
                 <p>
-                  <strong>Date:</strong> {fixture.date}
+                  <strong>Date:</strong> {asText(fixture.date, "N/A")}
                 </p>
+
                 <p>
-                  <strong>Time:</strong> {fixture.kickoffTime} - {fixture.endTime}
+                  <strong>Time:</strong> {asText(fixture.kickoffTime, "--")} -{" "}
+                  {asText(fixture.endTime, "--")}
                 </p>
+
                 <p>
-                  <strong>Venue:</strong> {fixture.venue}
+                  <strong>Venue:</strong> {asText(fixture.venue, "N/A")}
                 </p>
 
                 <div className="admin-actions">
                   <button type="button" onClick={() => handleStartEdit(fixture)}>
                     Edit
                   </button>
-                <button
-  type="button"
-  onClick={() =>
-    openConfirm({
-      title: "Delete Fixture",
-      message: `Delete fixture: ${fixture.homeTeam} vs ${fixture.awayTeam}?`,
-      onConfirm: async () => {
-        await handleDeleteFixture(fixture.id);
-      },
-      danger: true,
-    })
-  }
->
-  Delete
-</button>
 
-                  {fixture.status !== "Live" && fixture.status !== "Ended" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openConfirm({
+                        title: "Delete Fixture",
+                        message: `Delete fixture: ${asText(fixture.homeTeam)} vs ${asText(
+                          fixture.awayTeam
+                        )}?`,
+                        onConfirm: async () => {
+                          await handleDeleteFixture(fixture.id);
+                        },
+                        danger: true,
+                      })
+                    }
+                  >
+                    Delete
+                  </button>
+
+                  {asText(fixture.status) !== "Live" && asText(fixture.status) !== "Ended" && (
                     <button type="button" onClick={() => handleStartMatch(fixture.id)}>
                       Start Match
                     </button>
                   )}
 
-                  {fixture.status !== "Ended" && (
-                  <button
-  type="button"
-  onClick={() =>
-    openConfirm({
-      title: "End Match",
-      message: `End match: ${fixture.homeTeam} vs ${fixture.awayTeam}?`,
-      onConfirm: async () => {
-        await handleFinishMatch(fixture.id);
-      },
-      danger: false,
-    })
-  }
->
-  End Match
-</button>
-                  )} 
-
-                  {fixture.status !== "Postponed" && (
-                <button
-  type="button"
-  onClick={() =>
-    openConfirm({
-      title: "Postpone Fixture",
-      message: `Postpone fixture: ${fixture.homeTeam} vs ${fixture.awayTeam}?`,
-      onConfirm: async () => {
-        await handlePostponeMatch(fixture.id);
-      },
-      danger: false,
-    })
-  }
->
-  Postpone
-</button>
+                  {asText(fixture.status) !== "Ended" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openConfirm({
+                          title: "End Match",
+                          message: `End match: ${asText(fixture.homeTeam)} vs ${asText(
+                            fixture.awayTeam
+                          )}?`,
+                          onConfirm: async () => {
+                            await handleFinishMatch(fixture.id);
+                          },
+                          danger: false,
+                        })
+                      }
+                    >
+                      End Match
+                    </button>
                   )}
 
-                 
+                  {asText(fixture.status) !== "Postponed" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openConfirm({
+                          title: "Postpone Fixture",
+                          message: `Postpone fixture: ${asText(fixture.homeTeam)} vs ${asText(
+                            fixture.awayTeam
+                          )}?`,
+                          onConfirm: async () => {
+                            await handlePostponeMatch(fixture.id);
+                          },
+                          danger: false,
+                        })
+                      }
+                    >
+                      Postpone
+                    </button>
+                  )}
                 </div>
               </div>
             ))
@@ -573,19 +714,19 @@ if (
         </div>
       </div>
 
-       <ConfirmModal
-  isOpen={confirmState.isOpen}
-  title={confirmState.title}
-  message={confirmState.message}
-  onCancel={closeConfirm}
-  onConfirm={async () => {
-    if (confirmState.onConfirm) {
-      await confirmState.onConfirm();
-    }
-    closeConfirm();
-  }}
-  danger={confirmState.danger}
-/>
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        onCancel={closeConfirm}
+        onConfirm={async () => {
+          if (confirmState.onConfirm) {
+            await confirmState.onConfirm();
+          }
+          closeConfirm();
+        }}
+        danger={confirmState.danger}
+      />
     </AdminLayout>
   );
 }
